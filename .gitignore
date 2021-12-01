@@ -1,6 +1,8 @@
 # Build directory
 build/
+out/
 
 # Useless files
 .DS_STORE
 *.swp
+.vs
