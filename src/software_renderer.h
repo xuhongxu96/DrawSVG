@@ -124,9 +124,6 @@ private:
   // resolve samples to render target
   void resolve(void);
 
-  // set color in render target
-  void set_color_in_render_target(int x, int y, Color color);
-
   // set color in supersample target
   void set_color_in_supersample_target(int x, int y, Color color);
 

@@ -29,6 +29,7 @@ bool inside_triangle(float x, float y, float x0, float y0, float x1, float y1,
 // Implements SoftwareRenderer //
 
 void SoftwareRendererImp::draw_svg(SVG &svg) {
+  memset(this->supersample_target.data(), 255, this->supersample_target.size());
 
   // set top level transformation
   transformation = svg_2_screen;
@@ -69,7 +70,6 @@ void SoftwareRendererImp::set_sample_rate(size_t sample_rate) {
 
   this->supersample_target.resize(this->target_w * this->target_h *
                                   sample_rate * sample_rate * 4);
-  memset(this->supersample_target.data(), 255, this->supersample_target.size());
 }
 
 void SoftwareRendererImp::set_render_target(unsigned char *render_target,
@@ -83,7 +83,6 @@ void SoftwareRendererImp::set_render_target(unsigned char *render_target,
 
   this->supersample_target.resize(this->target_w * this->target_h *
                                   sample_rate * sample_rate * 4);
-  memset(this->supersample_target.data(), 255, this->supersample_target.size());
 }
 
 void SoftwareRendererImp::draw_element(SVGElement *element) {
@@ -258,8 +257,8 @@ void SoftwareRendererImp::rasterize_point(float x, float y, Color color) {
     return;
 
   // fill sample - NOT doing alpha blending!
-  for (int i = 0; i < sample_rate; ++i) {
-    for (int j = 0; j < sample_rate; ++j) {
+  for (int j = 0; j < sample_rate; ++j) {
+    for (int i = 0; i < sample_rate; ++i) {
       set_color_in_supersample_target(sx + i, sy + j, color);
     }
   }
@@ -292,14 +291,18 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
     int sx1 = (int)floor(x1);
 
     int y = (int)floor(y0);
+    if (y >= target_h)
+      return;
     float D = 2 * dy - dx;
 
     for (int x = sx0; x <= sx1; ++x) {
       if (x >= 0 && x < target_w) {
-        for (int sample_i = 0; sample_i < sample_rate; ++sample_i)
-          for (int sample_j = 0; sample_j < sample_rate; ++sample_j)
+        for (int sample_j = 0; sample_j < sample_rate; ++sample_j) {
+          for (int sample_i = 0; sample_i < sample_rate; ++sample_i) {
             set_color_in_supersample_target(x * sample_rate + sample_i,
                                             y * sample_rate + sample_j, color);
+          }
+        }
       }
       if (D >= 0) {
         y += delta;
@@ -329,12 +332,14 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
     int sy1 = (int)floor(y1);
 
     int x = (int)floor(x0);
+    if (x >= target_w)
+      return;
     int D = 2 * dx - dy;
 
     for (int y = sy0; y <= sy1; ++y) {
       if (y >= 0 && y < target_h)
-        for (int sample_i = 0; sample_i < sample_rate; ++sample_i)
-          for (int sample_j = 0; sample_j < sample_rate; ++sample_j)
+        for (int sample_j = 0; sample_j < sample_rate; ++sample_j)
+          for (int sample_i = 0; sample_i < sample_rate; ++sample_i)
             set_color_in_supersample_target(x * sample_rate + sample_i,
                                             y * sample_rate + sample_j, color);
       if (D >= 0) {
@@ -359,10 +364,8 @@ void SoftwareRendererImp::rasterize_triangle(float x0, float y0, float x1,
   int b = std::max(0, (int)floor(std::min({y0, y1, y2})));
   int t = std::min((int)target_h, (int)ceil(std::max({y0, y1, y2})));
 
-  float delta = .5f / sample_rate;
-
-  for (int x = l; x <= r; ++x) {
-    for (int y = b; y <= t; ++y) {
+  for (int x = l; x < r; ++x) {
+    for (int y = b; y < t; ++y) {
       for (int si = 0; si < sample_rate; ++si) {
         for (int sj = 0; sj < sample_rate; ++sj) {
           if (inside_triangle(
@@ -391,39 +394,33 @@ void SoftwareRendererImp::resolve(void) {
   // Implement supersampling
   // You may also need to modify other functions marked with "Task 4".
   size_t ss_w = target_w * sample_rate;
+  unsigned char sample_rate_square = sample_rate * sample_rate;
+  size_t end_sy = 0;
 
-  for (int x = 0; x < target_w; ++x) {
-    for (int y = 0; y < target_h; ++y) {
+  for (int y = 0; y < target_h; ++y) {
+    size_t end_sx = 0;
+    end_sy += sample_rate;
+
+    for (int x = 0; x < target_w; ++x) {
+      end_sx += sample_rate;
       uint32_t r = 0, g = 0, b = 0, a = 0;
 
-      for (size_t sx = x * sample_rate; sx < (x + 1) * sample_rate; ++sx) {
-        for (size_t sy = y * sample_rate; sy < (y + 1) * sample_rate; ++sy) {
-          r += supersample_target[4 * (sx + sy * ss_w)];
-          g += supersample_target[4 * (sx + sy * ss_w) + 1];
-          b += supersample_target[4 * (sx + sy * ss_w) + 2];
-          a += supersample_target[4 * (sx + sy * ss_w) + 3];
+      for (size_t sy = end_sy - sample_rate; sy < end_sy; ++sy) {
+        for (size_t sx = end_sx - sample_rate; sx < end_sx; ++sx) {
+          size_t idx = (sx + sy * ss_w) << 2;
+          r += supersample_target[idx];
+          g += supersample_target[idx + 1];
+          b += supersample_target[idx + 2];
+          a += supersample_target[idx + 3];
         }
       }
 
-      r /= sample_rate * sample_rate;
-      g /= sample_rate * sample_rate;
-      b /= sample_rate * sample_rate;
-      a /= sample_rate * sample_rate;
-
-      render_target[4 * (x + y * target_w)] = (uint8_t)r;
-      render_target[4 * (x + y * target_w) + 1] = (uint8_t)g;
-      render_target[4 * (x + y * target_w) + 2] = (uint8_t)b;
-      render_target[4 * (x + y * target_w) + 3] = (uint8_t)a;
+      render_target[4 * (x + y * target_w)] = r / sample_rate_square;
+      render_target[4 * (x + y * target_w) + 1] = g / sample_rate_square;
+      render_target[4 * (x + y * target_w) + 2] = b / sample_rate_square;
+      render_target[4 * (x + y * target_w) + 3] = a / sample_rate_square;
     }
   }
-}
-
-void SoftwareRendererImp::set_color_in_render_target(int x, int y,
-                                                     Color color) {
-  render_target[4 * (x + y * target_w)] = (uint8_t)(color.r * 255);
-  render_target[4 * (x + y * target_w) + 1] = (uint8_t)(color.g * 255);
-  render_target[4 * (x + y * target_w) + 2] = (uint8_t)(color.b * 255);
-  render_target[4 * (x + y * target_w) + 3] = (uint8_t)(color.a * 255);
 }
 
 void SoftwareRendererImp::set_color_in_supersample_target(int x, int y,
