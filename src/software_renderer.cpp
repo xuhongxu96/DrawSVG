@@ -13,8 +13,8 @@ using namespace std;
 namespace CMU462 {
 
 // check if point (x,y) is inside the triangle
-bool inside_triangle(float x, float y, float x0, float y0, float x1, float y1,
-                     float x2, float y2) {
+bool inside_triangle(double x, double y, double x0, double y0, double x1,
+                     double y1, double x2, double y2) {
   float a = (y1 - y0) * (x - x0) - (x1 - x0) * (y - y0);
   float b = (y2 - y1) * (x - x1) - (x2 - x1) * (y - y1);
   if (a * b < 0)
@@ -359,23 +359,17 @@ void SoftwareRendererImp::rasterize_triangle(float x0, float y0, float x1,
                                              Color color) {
   // Task 3:
   // Implement triangle rasterization
-  int l = std::max(0, (int)floor(std::min({x0, x1, x2})));
-  int r = std::min((int)target_w, (int)ceil(std::max({x0, x1, x2})));
-  int b = std::max(0, (int)floor(std::min({y0, y1, y2})));
-  int t = std::min((int)target_h, (int)ceil(std::max({y0, y1, y2})));
+  float l = std::max(0.f, std::min({x0, x1, x2}));
+  float r = std::min((float)target_w - 1, std::max({x0, x1, x2}));
+  float b = std::max(0.f, std::min({y0, y1, y2}));
+  float t = std::min((float)target_h - 1, std::max({y0, y1, y2}));
 
-  for (int x = l; x < r; ++x) {
-    for (int y = b; y < t; ++y) {
-      for (int si = 0; si < sample_rate; ++si) {
-        for (int sj = 0; sj < sample_rate; ++sj) {
-          if (inside_triangle(
-                  x * sample_rate + si + .5f, y * sample_rate + sj + .5f,
-                  x0 * sample_rate, y0 * sample_rate, x1 * sample_rate,
-                  y1 * sample_rate, x2 * sample_rate, y2 * sample_rate)) {
-            set_color_in_supersample_target(x * sample_rate + si,
-                                            y * sample_rate + sj, color);
-          }
-        }
+  for (int x = l * sample_rate; x <= ceil(r * sample_rate); ++x) {
+    for (int y = b * sample_rate; y <= ceil(t * sample_rate); ++y) {
+      if (inside_triangle(x + .5f, y + .5f, x0 * sample_rate, y0 * sample_rate,
+                          x1 * sample_rate, y1 * sample_rate, x2 * sample_rate,
+                          y2 * sample_rate)) {
+        set_color_in_supersample_target(x, y, color);
       }
     }
   }
