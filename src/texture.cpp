@@ -66,14 +66,27 @@ void Sampler2DImp::generate_mips(Texture &tex, int startLevel) {
   }
 
   // fill all 0 sub levels with interchanging colors (JUST AS A PLACEHOLDER)
-  Color colors[3] = {Color(1, 0, 0, 1), Color(0, 1, 0, 1), Color(0, 0, 1, 1)};
   for (size_t i = 1; i < tex.mipmap.size(); ++i) {
-
-    Color c = colors[i % 3];
     MipLevel &mip = tex.mipmap[i];
+    MipLevel &up_mip = tex.mipmap[i - 1];
 
-    for (size_t i = 0; i < 4 * mip.width * mip.height; i += 4) {
-      float_to_uint8(&mip.texels[i], &c.r);
+    for (size_t y = 0; y < mip.height; ++y) {
+      for (size_t x = 0; x < mip.width; ++x) {
+        Color c0(up_mip.texels.data() + 4 * (2 * x + up_mip.width * 2 * y));
+        Color c1(up_mip.texels.data() +
+                 4 * ((2 * x + 1) + up_mip.width * 2 * y));
+        Color c2(up_mip.texels.data() +
+                 4 * (2 * x + up_mip.width * (2 * y + 1)));
+        Color c3(up_mip.texels.data() +
+                 4 * ((2 * x + 1) + up_mip.width * (2 * y + 1)));
+
+        Color res = c0 * 0.25f + c1 * 0.25f + c2 * 0.25f + c3 * 0.25f;
+
+        mip.texels[4 * (x + mip.width * y)] = res.r * 255;
+        mip.texels[4 * (x + mip.width * y) + 1] = res.g * 255;
+        mip.texels[4 * (x + mip.width * y) + 2] = res.b * 255;
+        mip.texels[4 * (x + mip.width * y) + 3] = res.a * 255;
+      }
     }
   }
 }
