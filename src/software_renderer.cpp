@@ -385,6 +385,19 @@ void SoftwareRendererImp::rasterize_image(float x0, float y0, float x1,
                                           float y1, Texture &tex) {
   // Task 6:
   // Implement image rasterization
+
+  for (int y = std::max(0.f, y0 + .5f) * sample_rate;
+       y < std::min((float)target_h, y1 + .5f) * sample_rate; ++y) {
+    for (int x = std::max(0.f, x0 + .5f) * sample_rate;
+         x < std::min((float)target_w, x1 + .5f) * sample_rate; ++x) {
+      float u = std::max(0.f, (float)x / sample_rate - x0) / (x1 - x0);
+      float v = std::max(0.f, (float)y / sample_rate - y0) / (y1 - y0);
+
+      Color color = sampler->sample_bilinear(tex, u, v);
+
+      set_color_in_supersample_target(x, y, color);
+    }
+  }
 }
 
 // resolve samples to render target
