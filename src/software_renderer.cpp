@@ -360,9 +360,9 @@ void SoftwareRendererImp::rasterize_triangle(float x0, float y0, float x1,
   // Task 3:
   // Implement triangle rasterization
   float l = std::max(0.f, std::min({x0, x1, x2}));
-  float r = std::min((float)target_w - 1, std::max({x0, x1, x2}));
+  float r = std::min((float)target_w - 1, ceil(std::max({x0, x1, x2})));
   float b = std::max(0.f, std::min({y0, y1, y2}));
-  float t = std::min((float)target_h - 1, std::max({y0, y1, y2}));
+  float t = std::min((float)target_h - 1, ceil(std::max({y0, y1, y2})));
 
   for (int x = l * sample_rate; x <= ceil(r * sample_rate); ++x) {
     for (int y = b * sample_rate; y <= ceil(t * sample_rate); ++y) {
@@ -380,12 +380,15 @@ void SoftwareRendererImp::rasterize_image(float x0, float y0, float x1,
   // Task 6:
   // Implement image rasterization
 
-  for (int y = std::max(0.f, y0 + .5f) * sample_rate;
-       y < std::min((float)target_h, y1 + .5f) * sample_rate; ++y) {
-    for (int x = std::max(0.f, x0 + .5f) * sample_rate;
-         x < std::min((float)target_w, x1 + .5f) * sample_rate; ++x) {
-      float u = std::max(0.f, (float)x / sample_rate - x0) / (x1 - x0);
-      float v = std::max(0.f, (float)y / sample_rate - y0) / (y1 - y0);
+  int sx0 = floor(x0) * sample_rate;
+  int sy0 = floor(y0) * sample_rate;
+  int sx1 = ceil(x1) * sample_rate;
+  int sy1 = ceil(y1) * sample_rate;
+
+  for (int y = std::max(0, sy0); y < std::min((int)target_h, sy1); ++y) {
+    for (int x = std::max(0, sx0); x < std::min((int)target_w, sx1); ++x) {
+      float u = (float)std::max(0, x - sx0) / (sx1 - sx0);
+      float v = (float)std::max(0, y - sy0) / (sy1 - sy0);
 
       Color color = sampler->sample_bilinear(tex, u, v);
 

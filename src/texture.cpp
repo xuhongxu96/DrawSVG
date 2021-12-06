@@ -120,23 +120,20 @@ Color Sampler2DImp::sample_bilinear(Texture &tex, float u, float v, int level) {
   float x = u * mipmap.width;
   float y = v * mipmap.height;
 
-  int su00 = max(0, (int)floor(x - .5f));
-  int sv00 = max(0, (int)floor(y - .5f));
-  float s = x - (su00 + .5f);
-  float t = y - (sv00 + .5f);
-  Color c00 = Color(mipmap.texels.data() + 4 * (su00 + mipmap.width * sv00));
+  int x00 = (int)floor(x - .5f);
+  int y00 = (int)floor(y - .5f);
 
-  int su01 = max(0, (int)floor(x - .5f));
-  int sv01 = min((int)mipmap.height - 1, (int)floor(y + .5f));
-  Color c01 = Color(mipmap.texels.data() + 4 * (su01 + mipmap.width * sv01));
+  int min_x = max(0, x00);
+  int min_y = max(0, y00);
+  int max_x = min((int)mipmap.width - 1, x00 + 1);
+  int max_y = min((int)mipmap.height - 1, y00 + 1);
 
-  int su10 = min((int)mipmap.height - 1, (int)floor(x + .5f));
-  int sv10 = max(0, (int)floor(y - .5f));
-  Color c10 = Color(mipmap.texels.data() + 4 * (su10 + mipmap.width * sv10));
-
-  int su11 = min((int)mipmap.height - 1, (int)floor(x + .5f));
-  int sv11 = min((int)mipmap.height - 1, (int)floor(y + .5f));
-  Color c11 = Color(mipmap.texels.data() + 4 * (su11 + mipmap.width * sv11));
+  float s = x - (x00 + .5f);
+  float t = y - (y00 + .5f);
+  Color c00 = Color(mipmap.texels.data() + 4 * (min_x + mipmap.width * min_y));
+  Color c01 = Color(mipmap.texels.data() + 4 * (min_x + mipmap.width * max_y));
+  Color c10 = Color(mipmap.texels.data() + 4 * (max_x + mipmap.width * min_y));
+  Color c11 = Color(mipmap.texels.data() + 4 * (max_x + mipmap.width * max_y));
 
   return (1.f - t) * ((1.f - s) * c00 + s * c10) +
          t * ((1.f - s) * c01 + s * c11);
