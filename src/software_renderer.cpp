@@ -380,17 +380,18 @@ void SoftwareRendererImp::rasterize_image(float x0, float y0, float x1,
   // Task 6:
   // Implement image rasterization
 
-  int sx0 = floor(x0) * sample_rate;
-  int sy0 = floor(y0) * sample_rate;
-  int sx1 = ceil(x1) * sample_rate;
-  int sy1 = ceil(y1) * sample_rate;
+  int sx0 = floor((x0)*sample_rate);
+  int sy0 = floor((y0)*sample_rate);
+  int sx1 = ceil((x1)*sample_rate);
+  int sy1 = ceil((y1)*sample_rate);
 
   for (int y = std::max(0, sy0); y < std::min((int)target_h, sy1); ++y) {
     for (int x = std::max(0, sx0); x < std::min((int)target_w, sx1); ++x) {
       float u = (float)std::max(0, x - sx0) / (sx1 - sx0);
       float v = (float)std::max(0, y - sy0) / (sy1 - sy0);
 
-      Color color = sampler->sample_bilinear(tex, u, v);
+      Color color = sampler->sample_trilinear(tex, u, v, sx1 - sx0, sy1 - sy0);
+      //Color color = sampler->sample_bilinear(tex, u, v);
 
       set_color_in_supersample_target(x, y, color);
     }

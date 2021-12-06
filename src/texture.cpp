@@ -145,7 +145,24 @@ Color Sampler2DImp::sample_trilinear(Texture &tex, float u, float v,
   // Task 7: Implement trilinear filtering
 
   // return magenta for invalid level
-  return Color(1, 0, 1, 1);
+
+  float levelx = log2f(tex.width) - log2f(u_scale);
+  float levely = log2f(tex.height) - log2f(v_scale);
+  float level = max(levelx, levely);
+
+  if (level < 0) {
+    return sample_bilinear(tex, u, v);
+  }
+
+  int level0 = min((int)floor(level), (int)tex.mipmap.size() - 1);
+  int level1 = min((int)ceil(level), (int)tex.mipmap.size() - 1);
+
+  float w = level1 - level;
+
+  Color cr0 = sample_bilinear(tex, u, v, level0);
+  Color cr1 = sample_bilinear(tex, u, v, level1);
+
+  return w * cr0 + (1 - w) * cr1;
 }
 
 } // namespace CMU462
