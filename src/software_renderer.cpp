@@ -220,8 +220,70 @@ void SoftwareRendererImp::draw_polygon(Polygon &polygon) {
 }
 
 void SoftwareRendererImp::draw_ellipse(Ellipse &ellipse) {
+  // (x - h)^2 / a^2 + (y - k)^2 / b^2 = 1
 
   // Extra credit
+  auto center = transform(ellipse.center);
+  auto radius =
+      transformation * Vector3D(ellipse.radius.x, ellipse.radius.y, 0);
+
+  int l = center.x - radius.x - 1;
+  int r = ceil(center.x + radius.x + 1);
+  int b = center.y - radius.y - 1;
+  int t = ceil(center.y + radius.y + 1);
+
+  auto f = [&center, &radius](float x, float y) {
+    float offsetx = x - center.x;
+    float offsety = y - center.y;
+
+    return offsetx * offsetx / radius.x / radius.x +
+           offsety * offsety / radius.y / radius.y - 1;
+  };
+
+  auto get_x_boundary = [&center, &radius](float y, float res[2]) {
+    float offsety = y - center.y;
+    float root = sqrt((1 - offsety * offsety / radius.y / radius.y) * radius.x *
+                      radius.x);
+    res[0] = -root + center.x;
+    res[1] = root + center.x;
+  };
+
+  auto get_y_boundary = [&center, &radius](float x, float res[2]) {
+    float offsetx = x - center.x;
+    float root = sqrt((1 - offsetx * offsetx / radius.x / radius.x) * radius.y *
+                      radius.y);
+    res[0] = -root + center.y;
+    res[1] = root + center.y;
+  };
+
+  if (ellipse.style.fillColor.a != 0) {
+    for (int y = b; y <= t; ++y) {
+      for (int x = l; x <= r; ++x) {
+        float val = f(x, y);
+        if (val <= 0)
+          rasterize_point(x, y, ellipse.style.fillColor);
+      }
+    }
+  }
+
+  if (ellipse.style.strokeColor.a != 0) {
+    for (int y = b; y <= t; ++y) {
+      float x[2];
+      get_x_boundary(y, x);
+      for (int i = 0; i < ellipse.style.strokeWidth; ++i) {
+        rasterize_point(x[0] + i, y, ellipse.style.strokeColor);
+        rasterize_point(x[1] - i, y, ellipse.style.strokeColor);
+      }
+    }
+    for (int x = l; x <= r; ++x) {
+      float y[2];
+      get_y_boundary(x, y);
+      for (int i = 0; i < ellipse.style.strokeWidth; ++i) {
+        rasterize_point(x, y[0] + i, ellipse.style.strokeColor);
+        rasterize_point(x, y[1] - i, ellipse.style.strokeColor);
+      }
+    }
+  }
 }
 
 void SoftwareRendererImp::draw_image(Image &image) {
