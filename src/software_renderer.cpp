@@ -259,7 +259,8 @@ void SoftwareRendererImp::rasterize_point(float x, float y, Color color) {
   // fill sample - NOT doing alpha blending!
   for (int j = 0; j < sample_rate; ++j) {
     for (int i = 0; i < sample_rate; ++i) {
-      set_color_in_supersample_target(sx + i, sy + j, color);
+      set_color_in_supersample_target(sx * sample_rate + i,
+                                      sy * sample_rate + j, color);
     }
   }
 }
@@ -269,6 +270,9 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
 
   // Task 2:
   // Implement line rasterization
+
+  int sample_w = (target_w - 1) * sample_rate + 1,
+      sample_h = (target_h - 1) * sample_rate + 1;
 
   int delta = 1;
 
@@ -287,26 +291,22 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
       dy = -dy;
     }
 
-    int sx0 = (int)floor(x0);
-    int sx1 = (int)floor(x1);
+    int sx0 = (int)floor(x0 * sample_rate);
+    int sx1 = (int)floor(x1 * sample_rate);
 
-    int y = (int)floor(y0);
-    if (y >= target_h)
+    int y = (int)floor(y0 * sample_rate);
+    if ((delta > 0 && y >= sample_h) || (delta < 0 && y < 0))
       return;
     float D = 2 * dy - dx;
 
     for (int x = sx0; x <= sx1; ++x) {
-      if (x >= 0 && x < target_w) {
-        for (int sample_j = 0; sample_j < sample_rate; ++sample_j) {
-          for (int sample_i = 0; sample_i < sample_rate; ++sample_i) {
-            set_color_in_supersample_target(x * sample_rate + sample_i,
-                                            y * sample_rate + sample_j, color);
-          }
-        }
-      }
+      if (x >= 0 && x < sample_w && y >= 0 && y < sample_h)
+        for (int i = 0; i < sample_rate; ++i)
+          set_color_in_supersample_target(x, y + i, color);
+
       if (D >= 0) {
         y += delta;
-        if (y >= target_h)
+        if ((delta > 0 && y >= sample_h) || (delta < 0 && y < 0))
           break;
         D += 2 * (dy - dx);
       } else {
@@ -328,23 +328,22 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
       dx = -dx;
     }
 
-    int sy0 = (int)floor(y0);
-    int sy1 = (int)floor(y1);
+    int sy0 = (int)floor(y0 * sample_rate);
+    int sy1 = (int)floor(y1 * sample_rate);
 
-    int x = (int)floor(x0);
-    if (x >= target_w)
+    int x = (int)floor(x0 * sample_rate);
+    if ((delta > 0 && x >= sample_w) || (delta < 0 && x < 0))
       return;
     int D = 2 * dx - dy;
 
     for (int y = sy0; y <= sy1; ++y) {
-      if (y >= 0 && y < target_h)
-        for (int sample_j = 0; sample_j < sample_rate; ++sample_j)
-          for (int sample_i = 0; sample_i < sample_rate; ++sample_i)
-            set_color_in_supersample_target(x * sample_rate + sample_i,
-                                            y * sample_rate + sample_j, color);
+      if (x >= 0 && x < sample_w && y >= 0 && y < sample_h)
+        for (int i = 0; i < sample_rate; ++i)
+          set_color_in_supersample_target(x + i, y, color);
+
       if (D >= 0) {
         x += delta;
-        if (x >= target_w)
+        if ((delta > 0 && x >= sample_w) || (delta < 0 && x < 0))
           break;
         D += 2 * (dx - dy);
       } else {
@@ -385,8 +384,10 @@ void SoftwareRendererImp::rasterize_image(float x0, float y0, float x1,
   int sx1 = ceil((x1)*sample_rate);
   int sy1 = ceil((y1)*sample_rate);
 
-  for (int y = std::max(0, sy0); y < std::min((int)target_h, sy1); ++y) {
-    for (int x = std::max(0, sx0); x < std::min((int)target_w, sx1); ++x) {
+  for (int y = std::max(0, sy0);
+       y < std::min((int)(target_h * sample_rate), sy1); ++y) {
+    for (int x = std::max(0, sx0);
+         x < std::min((int)(target_w * sample_rate), sx1); ++x) {
       float u = (float)std::max(0, x - sx0) / (sx1 - sx0);
       float v = (float)std::max(0, y - sy0) / (sy1 - sy0);
 
@@ -437,10 +438,15 @@ void SoftwareRendererImp::resolve(void) {
 void SoftwareRendererImp::set_color_in_supersample_target(int x, int y,
                                                           Color color) {
   size_t ss_w = target_w * sample_rate;
-  supersample_target[4 * (x + y * ss_w)] = (uint8_t)(color.r * 255);
-  supersample_target[4 * (x + y * ss_w) + 1] = (uint8_t)(color.g * 255);
-  supersample_target[4 * (x + y * ss_w) + 2] = (uint8_t)(color.b * 255);
-  supersample_target[4 * (x + y * ss_w) + 3] = (uint8_t)(color.a * 255);
+  auto &r = supersample_target[4 * (x + y * ss_w)];
+  auto &g = supersample_target[4 * (x + y * ss_w) + 1];
+  auto &b = supersample_target[4 * (x + y * ss_w) + 2];
+  auto &a = supersample_target[4 * (x + y * ss_w) + 3];
+
+  r = (1 - color.a) * r + color.r * 255 * color.a;
+  g = (1 - color.a) * g + color.g * 255 * color.a;
+  b = (1 - color.a) * b + color.b * 255 * color.a;
+  a = (1 - color.a) * a + color.a * 255;
 }
 
 } // namespace CMU462

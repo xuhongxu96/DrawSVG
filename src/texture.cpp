@@ -17,6 +17,12 @@ inline void uint8_to_float(float dst[4], unsigned char *src) {
   dst[3] = src_uint8[3] / 255.f;
 }
 
+inline Color uint8_to_color(unsigned char *src) {
+  float cr[4];
+  uint8_to_float(cr, src);
+  return Color(cr[0], cr[1], cr[2], cr[3]);
+}
+
 inline void float_to_uint8(unsigned char *dst, float src[4]) {
   uint8_t *dst_uint8 = (uint8_t *)dst;
   dst_uint8[0] = (uint8_t)(255.f * max(0.0f, min(1.0f, src[0])));
@@ -72,15 +78,17 @@ void Sampler2DImp::generate_mips(Texture &tex, int startLevel) {
 
     for (size_t y = 0; y < mip.height; ++y) {
       for (size_t x = 0; x < mip.width; ++x) {
-        Color c0(up_mip.texels.data() + 4 * (2 * x + up_mip.width * 2 * y));
-        Color c1(up_mip.texels.data() +
-                 4 * ((2 * x + 1) + up_mip.width * 2 * y));
-        Color c2(up_mip.texels.data() +
-                 4 * (2 * x + up_mip.width * (2 * y + 1)));
-        Color c3(up_mip.texels.data() +
-                 4 * ((2 * x + 1) + up_mip.width * (2 * y + 1)));
+        auto cr0 = uint8_to_color(up_mip.texels.data() +
+                                  4 * (2 * x + up_mip.width * 2 * y));
+        auto cr1 = uint8_to_color(up_mip.texels.data() +
+                                  4 * ((2 * x + 1) + up_mip.width * 2 * y));
+        auto cr2 = uint8_to_color(up_mip.texels.data() +
+                                  4 * (2 * x + up_mip.width * (2 * y + 1)));
+        auto cr3 =
+            uint8_to_color(up_mip.texels.data() +
+                           4 * ((2 * x + 1) + up_mip.width * (2 * y + 1)));
 
-        Color res = c0 * 0.25f + c1 * 0.25f + c2 * 0.25f + c3 * 0.25f;
+        Color res = cr0 * 0.25f + cr1 * 0.25f + cr2 * 0.25f + cr3 * 0.25f;
 
         mip.texels[4 * (x + mip.width * y)] = res.r * 255;
         mip.texels[4 * (x + mip.width * y) + 1] = res.g * 255;
@@ -130,10 +138,14 @@ Color Sampler2DImp::sample_bilinear(Texture &tex, float u, float v, int level) {
 
   float s = x - (x00 + .5f);
   float t = y - (y00 + .5f);
-  Color c00 = Color(mipmap.texels.data() + 4 * (min_x + mipmap.width * min_y));
-  Color c01 = Color(mipmap.texels.data() + 4 * (min_x + mipmap.width * max_y));
-  Color c10 = Color(mipmap.texels.data() + 4 * (max_x + mipmap.width * min_y));
-  Color c11 = Color(mipmap.texels.data() + 4 * (max_x + mipmap.width * max_y));
+  Color c00 =
+      uint8_to_color(mipmap.texels.data() + 4 * (min_x + mipmap.width * min_y));
+  Color c01 =
+      uint8_to_color(mipmap.texels.data() + 4 * (min_x + mipmap.width * max_y));
+  Color c10 =
+      uint8_to_color(mipmap.texels.data() + 4 * (max_x + mipmap.width * min_y));
+  Color c11 =
+      uint8_to_color(mipmap.texels.data() + 4 * (max_x + mipmap.width * max_y));
 
   return (1.f - t) * ((1.f - s) * c00 + s * c10) +
          t * ((1.f - s) * c01 + s * c11);
