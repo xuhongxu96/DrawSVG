@@ -112,7 +112,8 @@ private:
   void rasterize_point(float x, float y, Color color);
 
   // rasterize a line
-  void rasterize_line(float x0, float y0, float x1, float y1, Color color);
+  void rasterize_line(float x0, float y0, float x1, float y1, Color color,
+                      float width = 1);
 
   // rasterize a triangle
   void rasterize_triangle(float x0, float y0, float x1, float y1, float x2,

@@ -137,7 +137,8 @@ void SoftwareRendererImp::draw_line(Line &line) {
 
   Vector2D p0 = transform(line.from);
   Vector2D p1 = transform(line.to);
-  rasterize_line(p0.x, p0.y, p1.x, p1.y, line.style.strokeColor);
+  rasterize_line(p0.x, p0.y, p1.x, p1.y, line.style.strokeColor,
+                 line.style.strokeWidth);
 }
 
 void SoftwareRendererImp::draw_polyline(Polyline &polyline) {
@@ -328,7 +329,7 @@ void SoftwareRendererImp::rasterize_point(float x, float y, Color color) {
 }
 
 void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
-                                         Color color) {
+                                         Color color, float width) {
 
   // Task 2:
   // Implement line rasterization
@@ -362,9 +363,16 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
     float D = 2 * dy - dx;
 
     for (int x = sx0; x <= sx1; ++x) {
-      if (x >= 0 && x < sample_w && y >= 0 && y < sample_h)
-        for (int i = 0; i < sample_rate; ++i)
-          set_color_in_supersample_target(x, y + i, color);
+      if (x >= 0 && x < sample_w) {
+        for (int w = -(width - 1) / 2; w <= width / 2; ++w) {
+          int w_y = y + w;
+          if (w_y >= 0 && w_y < sample_h) {
+            for (int i = 0; i < sample_rate; ++i) {
+              set_color_in_supersample_target(x, w_y + i, color);
+            }
+          }
+        }
+      }
 
       if (D >= 0) {
         y += delta;
@@ -399,9 +407,16 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
     int D = 2 * dx - dy;
 
     for (int y = sy0; y <= sy1; ++y) {
-      if (x >= 0 && x < sample_w && y >= 0 && y < sample_h)
-        for (int i = 0; i < sample_rate; ++i)
-          set_color_in_supersample_target(x + i, y, color);
+      if (y >= 0 && y < sample_h) {
+        for (int w = -(width - 1) / 2; w <= width / 2; ++w) {
+          int w_x = x + w;
+          if (w_x >= 0 && w_x < sample_w) {
+            for (int i = 0; i < sample_rate; ++i) {
+              set_color_in_supersample_target(w_x + i, y, color);
+            }
+          }
+        }
+      }
 
       if (D >= 0) {
         x += delta;
