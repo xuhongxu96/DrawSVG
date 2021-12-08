@@ -62,7 +62,8 @@ void SoftwareRendererImp::draw_svg(SVG &svg) {
 
   // resolve and send to render target
   resolve();
-  mlaa();
+  if (enable_mlaa)
+    mlaa();
 }
 
 void SoftwareRendererImp::set_sample_rate(size_t sample_rate) {
@@ -590,8 +591,7 @@ static MLAAArea mlaa_calc_area(std::array<float, 2> p0, std::array<float, 2> p1,
   }
 }
 
-static MLAAArea mlaa_get_weights_for_pattern(int pattern, float dl, float dr,
-                                             int offset) {
+static MLAAArea mlaa_get_weights_for_pattern(int pattern, float dl, float dr) {
   float d = dl + dr + 1;
 
   // lb rb lt rt
@@ -638,7 +638,8 @@ static MLAAArea mlaa_get_weights_for_pattern(int pattern, float dl, float dr,
     auto a0 = mlaa_calc_area({0, .5f}, {d / 2.f, 0.f}, dl);
     auto a1 = mlaa_calc_area({d / 2.f, 0.f}, {d, -.5f}, dl);
     auto a2 = mlaa_calc_area({0, .5f}, {d, -.5f}, dl);
-    return {a0.me + a1.me + a2.me, a0.opposite + a1.opposite + a2.opposite};
+    return {(a0.me + a1.me + a2.me) / 2.f,
+            (a0.opposite + a1.opposite + a2.opposite) / 2.f};
   }
 
   break;
@@ -646,7 +647,8 @@ static MLAAArea mlaa_get_weights_for_pattern(int pattern, float dl, float dr,
     auto a0 = mlaa_calc_area({d / 2.f, 0.f}, {d, .5f}, dl);
     auto a1 = mlaa_calc_area({0, -.5f}, {d / 2.f, 0.f}, dl);
     auto a2 = mlaa_calc_area({0, -.5f}, {d, .5f}, dl);
-    return {a0.me + a1.me + a2.me, a0.opposite + a1.opposite + a2.opposite};
+    return {(a0.me + a1.me + a2.me) / 2.f,
+            (a0.opposite + a1.opposite + a2.opposite) / 2.f};
   }
 
     // 3 edges
@@ -668,21 +670,27 @@ static MLAAArea mlaa_get_weights_for_pattern(int pattern, float dl, float dr,
   }
 }
 
+void SoftwareRendererImp::set_mlaa(bool enable) { enable_mlaa = enable; }
+
 void SoftwareRendererImp::mlaa(void) {
   // Extra credits: MLAA on render_target
 
-  auto get_color = [&](int x, int y) {
-    return render_target + 4 * (x + y * target_w);
-  };
+  auto get_index = [&](int x, int y) { return 4 * (x + y * target_w); };
 
-  auto edge_target = mlaa_detect_edge(0.1f);
+  std::vector<unsigned char> old_target(4 * target_w * target_h);
+  memcpy(old_target.data(), render_target, old_target.size());
+
+  auto edge_target = mlaa_detect_edge(0.05f);
 
   // Step 2. Pattern handling
-  const int MAX_SEARCH_STEP = 100;
+  const int MAX_SEARCH_STEP = 20;
 
   for (int y = 0; y < target_h; ++y) {
     for (int x = 0; x < target_w; ++x) {
-      auto cur_cr = get_color(x, y);
+      auto index = get_index(x, y);
+      auto cur_cr = render_target + index;
+      auto old_cur_cr = old_target.data() + index;
+
       auto e = edge_target[x + y * target_w];
 
       if (e & 0x1) {
@@ -715,14 +723,16 @@ void SoftwareRendererImp::mlaa(void) {
 
         int pattern =
             (dr_edge << 2) | (ur_edge << 1) | (dl_edge) | (ul_edge >> 1);
-        auto w = mlaa_get_weights_for_pattern(pattern, dd, -du, x);
+        auto w = mlaa_get_weights_for_pattern(pattern, dd, -du);
         assert(w.me + w.opposite <= 1);
 
         // Blend with left
-        auto left_cr = get_color(x - 1, y);
+        auto old_left_cr = old_target.data() + get_index(x - 1, y);
+        auto left_cr = render_target + get_index(x - 1, y);
         for (int j = 0; j < 4; ++j) {
-          cur_cr[j] = cur_cr[j] * (1.f - w.me) + left_cr[j] * w.me;
-          left_cr[j] = left_cr[j] * (1.f - w.opposite) + cur_cr[j] * w.opposite;
+          cur_cr[j] = old_cur_cr[j] * (1.f - w.me) + old_left_cr[j] * w.me;
+          left_cr[j] =
+              old_left_cr[j] * (1.f - w.opposite) + old_cur_cr[j] * w.opposite;
         }
       }
 
@@ -758,14 +768,16 @@ void SoftwareRendererImp::mlaa(void) {
 
         int pattern =
             (lb_edge << 3) | (rb_edge << 2) | (lt_edge << 1) | rt_edge;
-        auto w = mlaa_get_weights_for_pattern(pattern, -dl, dr, y);
+        auto w = mlaa_get_weights_for_pattern(pattern, -dl, dr);
         assert(w.me + w.opposite <= 1);
 
         // Blend with top
-        auto top_cr = get_color(x, y - 1);
+        auto old_top_cr = old_target.data() + get_index(x, y - 1);
+        auto top_cr = render_target + get_index(x, y - 1);
         for (int j = 0; j < 4; ++j) {
-          cur_cr[j] = cur_cr[j] * (1.f - w.me) + top_cr[j] * w.me;
-          top_cr[j] = top_cr[j] * (1.f - w.opposite) + cur_cr[j] * w.opposite;
+          cur_cr[j] = old_cur_cr[j] * (1.f - w.me) + old_top_cr[j] * w.me;
+          top_cr[j] =
+              old_top_cr[j] * (1.f - w.opposite) + old_cur_cr[j] * w.opposite;
         }
       }
     }

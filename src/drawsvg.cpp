@@ -183,6 +183,11 @@ void DrawSVG::char_event( unsigned int key ) {
       show_zoom = !show_zoom;
       break;
 
+    case 'm':
+    case 'M':
+      setMLAA(!mlaa);
+      break;
+
     // tab selection
     case '0':
       setTab( 9 );
@@ -306,6 +311,11 @@ void DrawSVG::setTab( size_t tab_index ) {
     // update output
     redraw();
   }
+}
+
+void DrawSVG::setMLAA(bool enable) {
+  dynamic_cast<SoftwareRendererImp *>(software_renderer_imp)->set_mlaa(mlaa = enable);
+  redraw();
 }
 
 void DrawSVG::draw_diff() {

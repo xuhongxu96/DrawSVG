@@ -39,6 +39,7 @@ class DrawSVG : public Renderer {
     method (Software),
     sample_rate (1),
     current_tab (0),
+    mlaa(false),
     show_diff (false),
     show_zoom (false),
     norm_to_screen ( Matrix3x3::identity() )  { }
@@ -113,6 +114,11 @@ class DrawSVG : public Renderer {
   void setTab(size_t tab_index);
 
   /**
+   * Enable MLAA
+   */
+  void setMLAA(bool enable);
+
+  /**
    * Get the number of pixels different from the reference.
    */
   int getErrorCount( void ) const;
@@ -151,6 +157,9 @@ class DrawSVG : public Renderer {
   std::vector<SVG*> tabs; size_t current_tab;
   std::vector<Viewport*> viewport_imp;
   std::vector<Viewport*> viewport_ref;
+
+  /* mlaa */
+  bool mlaa;
   
   /* diff */
   bool show_diff;

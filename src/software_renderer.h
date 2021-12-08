@@ -62,7 +62,7 @@ protected:
 
 class SoftwareRendererImp : public SoftwareRenderer {
 public:
-  SoftwareRendererImp() : SoftwareRenderer() {}
+  SoftwareRendererImp() : SoftwareRenderer(), enable_mlaa(false) {}
 
   // draw an svg input to render target
   void draw_svg(SVG &svg);
@@ -73,6 +73,9 @@ public:
   // set render target
   void set_render_target(unsigned char *target_buffer, size_t width,
                          size_t height);
+
+  // enable mlaa
+  void set_mlaa(bool enable);
 
 private:
   // Supersample target
@@ -127,6 +130,7 @@ private:
   void resolve(void);
 
   // MLAA
+  bool enable_mlaa;
   std::vector<unsigned char> mlaa_detect_edge(float L);
   void mlaa(void);
 
