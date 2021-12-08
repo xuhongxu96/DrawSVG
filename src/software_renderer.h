@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <vector>
+#include <array>
 
 #include "CMU462.h"
 #include "texture.h"
@@ -124,6 +125,10 @@ private:
 
   // resolve samples to render target
   void resolve(void);
+
+  // MLAA
+  std::vector<unsigned char> mlaa_detect_edge(float L);
+  void mlaa(void);
 
   // set color in supersample target
   void set_color_in_supersample_target(int x, int y, Color color);

@@ -1,10 +1,12 @@
 #include "software_renderer.h"
 
+#include <cassert>
 #include <cmath>
 #include <cstring>
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <array>
 
 #include "triangulation.h"
 
@@ -53,13 +55,14 @@ void SoftwareRendererImp::draw_svg(SVG &svg) {
   d.x++;
   d.y++;
 
-  rasterize_line(a.x, a.y, b.x, b.y, Color::Black);
-  rasterize_line(a.x, a.y, c.x, c.y, Color::Black);
-  rasterize_line(d.x, d.y, b.x, b.y, Color::Black);
-  rasterize_line(d.x, d.y, c.x, c.y, Color::Black);
+  //rasterize_line(a.x, a.y, b.x, b.y, Color::Black);
+  //rasterize_line(a.x, a.y, c.x, c.y, Color::Black);
+  //rasterize_line(d.x, d.y, b.x, b.y, Color::Black);
+  //rasterize_line(d.x, d.y, c.x, c.y, Color::Black);
 
   // resolve and send to render target
   resolve();
+  mlaa();
 }
 
 void SoftwareRendererImp::set_sample_rate(size_t sample_rate) {
@@ -333,6 +336,7 @@ void SoftwareRendererImp::rasterize_line(float x0, float y0, float x1, float y1,
 
   // Task 2:
   // Implement line rasterization
+  width *= sample_rate;
 
   int sample_w = (target_w - 1) * sample_rate + 1,
       sample_h = (target_h - 1) * sample_rate + 1;
@@ -508,6 +512,260 @@ void SoftwareRendererImp::resolve(void) {
       render_target[4 * (x + y * target_w) + 1] = g / sample_rate_square;
       render_target[4 * (x + y * target_w) + 2] = b / sample_rate_square;
       render_target[4 * (x + y * target_w) + 3] = a / sample_rate_square;
+    }
+  }
+}
+
+// Step 1. Edge detection
+std::vector<unsigned char> SoftwareRendererImp::mlaa_detect_edge(float L) {
+  auto get_luma = [&](int x, int y) {
+    auto cr = render_target + 4 * (x + y * target_w);
+    return (cr[0] * 0.2126f + cr[1] * 0.7152f + cr[2] * 0.0722f) *
+           (cr[3] / 255.f);
+  };
+
+  // TODO: Local contract adaptation
+  std::vector<unsigned char> edge_target(target_w * target_h, 0);
+
+  for (int y = 0; y < target_h; ++y) {
+    for (int x = 0; x < target_w; ++x) {
+      auto luma_cur = get_luma(x, y);
+      if (x > 0) {
+        auto luma_left = get_luma(x - 1, y);
+
+        if (abs(luma_cur - luma_left) > L) {
+          edge_target[x + y * target_w] |= 0x1; // L: 0001
+        }
+      }
+
+      if (y > 0) {
+        auto luma_top = get_luma(x, y - 1);
+
+        if (abs(luma_cur - luma_top) > L) {
+          edge_target[x + y * target_w] |= 0x2; // T: 0010
+        }
+      }
+    }
+  }
+
+  return edge_target;
+}
+
+struct MLAAArea {
+  float me = 0.f;
+  float opposite = 0.f;
+};
+
+static MLAAArea mlaa_calc_area(std::array<float, 2> p0, std::array<float, 2> p1,
+                               float x0) {
+  float dx = p1[0] - p0[0];
+  float dy = p1[1] - p0[1];
+  float x1 = x0 + 1;
+  if (x0 >= p1[0] || x1 < p0[0]) {
+    // outside
+    return {0.f, 0.f};
+  }
+
+  float y0 = (p1[1] - p0[1]) / (p1[0] - p0[0]) * (x0 - p0[0]) + p0[1];
+  float y1 = (p1[1] - p0[1]) / (p1[0] - p0[0]) * (x1 - p0[0]) + p0[1];
+
+  if (copysign(1.f, y0) == copysign(1.f, y1) || abs(y0) < FLT_EPSILON ||
+      abs(y1) < FLT_EPSILON) {
+    // trapezoid
+    float res = abs(y0 + y1) / 2.f;
+    if (y0 + y1 > 0)
+      return {res, 0.f};
+    else
+      return {0.f, res};
+  }
+
+  // triangle
+  float midx = -p0[1] * (p1[0] - p0[0]) / (p1[1] - p0[1]) + p0[0];
+  float area0 = abs(y0 * (midx - x0) / 2.f);
+  float area1 = abs(y1 * (1.f - (x1 - midx)) / 2.f);
+  if (y0 > 0) {
+    return {area0, area1};
+  } else {
+    return {area1, area0};
+  }
+}
+
+static MLAAArea mlaa_get_weights_for_pattern(int pattern, float dl, float dr,
+                                             int offset) {
+  float d = dl + dr + 1;
+
+  // lb rb lt rt
+  switch (pattern) {
+    // 1 edge
+  case 0b1000:
+    if (dl > dr) {
+      return {0.f, 0.f};
+    }
+
+    return mlaa_calc_area({0, .5f}, {d / 2.f, 0.f}, dl);
+  case 0b0100:
+    if (dl < dr) {
+      return {0.f, 0.f};
+    }
+
+    return mlaa_calc_area({d / 2.f, 0.f}, {d, .5f}, dl);
+  case 0b0010:
+    if (dl > dr) {
+      return {0.f, 0.f};
+    }
+
+    return mlaa_calc_area({0, -.5f}, {d / 2.f, 0.f}, dl);
+  case 0b0001:
+    if (dl < dr) {
+      return {0.f, 0.f};
+    }
+
+    return mlaa_calc_area({d / 2.f, 0.f}, {d, -.5f}, dl);
+
+    // 2 edges
+  case 0b1100: {
+    auto a0 = mlaa_calc_area({0, .5f}, {d / 2.f, 0.f}, dl);
+    auto a1 = mlaa_calc_area({d / 2.f, 0.f}, {d, .5f}, dl);
+    return {a0.me + a1.me, a0.opposite + a1.opposite};
+  }
+  case 0b0011: {
+    auto a0 = mlaa_calc_area({0, -.5f}, {d / 2.f, 0.f}, dl);
+    auto a1 = mlaa_calc_area({d / 2.f, 0.f}, {d, -.5f}, dl);
+    return {a0.me + a1.me, a0.opposite + a1.opposite};
+  }
+
+  case 0b1001: {
+    auto a0 = mlaa_calc_area({0, .5f}, {d / 2.f, 0.f}, dl);
+    auto a1 = mlaa_calc_area({d / 2.f, 0.f}, {d, -.5f}, dl);
+    auto a2 = mlaa_calc_area({0, .5f}, {d, -.5f}, dl);
+    return {a0.me + a1.me + a2.me, a0.opposite + a1.opposite + a2.opposite};
+  }
+
+  break;
+  case 0b0110: {
+    auto a0 = mlaa_calc_area({d / 2.f, 0.f}, {d, .5f}, dl);
+    auto a1 = mlaa_calc_area({0, -.5f}, {d / 2.f, 0.f}, dl);
+    auto a2 = mlaa_calc_area({0, -.5f}, {d, .5f}, dl);
+    return {a0.me + a1.me + a2.me, a0.opposite + a1.opposite + a2.opposite};
+  }
+
+    // 3 edges
+  case 0b0111:
+  case 0b1110:
+    return mlaa_calc_area({0, -.5f}, {d, .5f}, dl);
+  case 0b1011:
+  case 0b1101:
+    return mlaa_calc_area({0, .5f}, {d, -.5f}, dl);
+
+    // no area
+  case 0b0000:
+  case 0b1010:
+  case 0b0101:
+  case 0b1111:
+    return {0.f, 0.f};
+  default:
+    assert(false);
+  }
+}
+
+void SoftwareRendererImp::mlaa(void) {
+  // Extra credits: MLAA on render_target
+
+  auto get_color = [&](int x, int y) {
+    return render_target + 4 * (x + y * target_w);
+  };
+
+  auto edge_target = mlaa_detect_edge(0.1f);
+
+  // Step 2. Pattern handling
+  const int MAX_SEARCH_STEP = 100;
+
+  for (int y = 0; y < target_h; ++y) {
+    for (int x = 0; x < target_w; ++x) {
+      auto cur_cr = get_color(x, y);
+      auto e = edge_target[x + y * target_w];
+
+      if (e & 0x1) {
+        // Left
+        float du, dd;
+        int i = 0;
+
+        // Y up distance
+        for (i = 1; i < MAX_SEARCH_STEP; ++i) {
+          if (y - i < 0)
+            break;
+          if ((edge_target[x + (y - i) * target_w] & 0x1) == 0)
+            break;
+        }
+        du = -(i - 1);
+
+        // Y down distance
+        for (i = 1; i < MAX_SEARCH_STEP; ++i) {
+          if (y + i >= target_h)
+            break;
+          if ((edge_target[x + (y + i) * target_w] & 0x1) == 0)
+            break;
+        }
+        dd = i - 1;
+
+        int ur_edge = edge_target[x + (y + du) * target_w] & 0x2;
+        int dr_edge = edge_target[x + (y + dd) * target_w] & 0x2;
+        int ul_edge = edge_target[x - 1 + (y + du) * target_w] & 0x2;
+        int dl_edge = edge_target[x - 1 + (y + dd) * target_w] & 0x2;
+
+        int pattern =
+            (dr_edge << 2) | (ur_edge << 1) | (dl_edge) | (ul_edge >> 1);
+        auto w = mlaa_get_weights_for_pattern(pattern, dd, du, x);
+
+        // Blend with left
+        auto left_cr = get_color(x - 1, y);
+        for (int j = 0; j < 4; ++j) {
+          cur_cr[j] = cur_cr[j] * (1.f - w.me) + left_cr[j] * w.me;
+          left_cr[j] = left_cr[j] * (1.f - w.opposite) + cur_cr[j] * w.opposite;
+        }
+      }
+
+      if (e & 0x2) {
+        // Top
+        float dl, dr;
+        int i = 0;
+
+        // X left distance
+        for (i = 1; i < MAX_SEARCH_STEP; ++i) {
+          if (x - i < 0)
+            break;
+          if ((edge_target[x - i + y * target_w] & 0x2) == 0)
+            break;
+        }
+        dl = -(i - 1);
+
+        // X right distance
+        for (i = 1; i < MAX_SEARCH_STEP; ++i) {
+          if (x + i >= target_w)
+            break;
+          if ((edge_target[x + i + y * target_w] & 0x2) == 0)
+            break;
+        }
+        dr = i - 1;
+
+        float d = dl + dr + 1;
+
+        int lb_edge = edge_target[x + dl + y * target_w] & 0x1;
+        int rb_edge = edge_target[x + dr + y * target_w] & 0x1;
+        int lt_edge = edge_target[x + dl + (y - 1) * target_w] & 0x1;
+        int rt_edge = edge_target[x + dr + (y - 1) * target_w] & 0x1;
+
+        int pattern =
+            (lb_edge << 3) | (rb_edge << 2) | (lt_edge << 1) | rt_edge;
+        auto w = mlaa_get_weights_for_pattern(pattern, dl, dr, y);
+
+        // Blend with top
+        auto top_cr = get_color(x, y - 1);
+        for (int j = 0; j < 4; ++j) {
+          cur_cr[j] = cur_cr[j] * (1.f - w.me) + top_cr[j] * w.me;
+          top_cr[j] = top_cr[j] * (1.f - w.opposite) + cur_cr[j] * w.opposite;
+        }
+      }
     }
   }
 }
