@@ -55,10 +55,10 @@ void SoftwareRendererImp::draw_svg(SVG &svg) {
   d.x++;
   d.y++;
 
-  //rasterize_line(a.x, a.y, b.x, b.y, Color::Black);
-  //rasterize_line(a.x, a.y, c.x, c.y, Color::Black);
-  //rasterize_line(d.x, d.y, b.x, b.y, Color::Black);
-  //rasterize_line(d.x, d.y, c.x, c.y, Color::Black);
+  rasterize_line(a.x, a.y, b.x, b.y, Color::Black);
+  rasterize_line(a.x, a.y, c.x, c.y, Color::Black);
+  rasterize_line(d.x, d.y, b.x, b.y, Color::Black);
+  rasterize_line(d.x, d.y, c.x, c.y, Color::Black);
 
   // resolve and send to render target
   resolve();
@@ -715,7 +715,8 @@ void SoftwareRendererImp::mlaa(void) {
 
         int pattern =
             (dr_edge << 2) | (ur_edge << 1) | (dl_edge) | (ul_edge >> 1);
-        auto w = mlaa_get_weights_for_pattern(pattern, dd, du, x);
+        auto w = mlaa_get_weights_for_pattern(pattern, dd, -du, x);
+        assert(w.me + w.opposite <= 1);
 
         // Blend with left
         auto left_cr = get_color(x - 1, y);
@@ -757,7 +758,8 @@ void SoftwareRendererImp::mlaa(void) {
 
         int pattern =
             (lb_edge << 3) | (rb_edge << 2) | (lt_edge << 1) | rt_edge;
-        auto w = mlaa_get_weights_for_pattern(pattern, dl, dr, y);
+        auto w = mlaa_get_weights_for_pattern(pattern, -dl, dr, y);
+        assert(w.me + w.opposite <= 1);
 
         // Blend with top
         auto top_cr = get_color(x, y - 1);
